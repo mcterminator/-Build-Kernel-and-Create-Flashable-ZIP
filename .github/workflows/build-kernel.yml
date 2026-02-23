@@ -1,0 +1,111 @@
+   name: Build Kernel and Create Flashable ZIP
+
+   on:
+     push:
+       branches: [ main ]
+     pull_request:
+       branches: [ main ]
+     workflow_dispatch:
+
+   jobs:
+     build:
+       runs-on: ubuntu-latest
+
+       steps:
+       - name: Checkout code
+         uses: actions/checkout@v3
+
+       - name: Setup build environment
+         run: |
+           sudo apt update
+           sudo apt install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg
+   gperf imagemagick lib32ncurses5-dev lib32readline-dev lib32z1-dev libelf-dev liblz4-tool libncurses5-dev
+   libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip
+   zlib1g-dev python2 openjdk-8-jdk wget
+
+       - name: Install ARM64 Cross Compiler
+         run: |
+           git clone
+   https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9
+   --depth=1
+           git clone
+   https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 --depth=1
+
+       - name: Setup environment variables
+         run: |
+           echo "ARCH=arm64" >> $GITHUB_ENV
+           echo "SUBARCH=arm64" >> $GITHUB_ENV
+           echo "CROSS_COMPILE=$(pwd)/aarch64-linux-android-4.9/bin/aarch64-linux-android-" >> $GITHUB_ENV
+
+       - name: Create output directory
+         run: mkdir -p out
+
+       - name: Configure kernel
+         run: |
+           # 使用默认defconfig或更改为你的设备特定配置
+           make O=out defconfig
+
+       - name: Build kernel
+         run: |
+           make O=out -j2  # 限制并发数以避免内存不足
+
+       - name: Check build results
+         run: |
+           ls -la out/arch/arm64/boot/
+
+       - name: Create flashable ZIP
+         run: |
+           # 创建临时目录
+           mkdir -p kernel_zip/META-INF/com/google/android/
+
+           # 创建更新脚本
+           cat > kernel_zip/META-INF/com/google/android/updater-script << 'EOF'
+   #MAGISK
+   apiLevel=20
+   is64bitonly=true
+
+   ui_print("*******************************************");
+   ui_print("          Installing Custom Kernel         ");
+   ui_print("*******************************************");
+
+   block_mount /system;
+   block_mount /vendor;
+
+   # Flash the boot image
+   package_extract_file "Image.gz-dtb", "/dev/block/bootdevice/by-name/boot";
+
+   ui_print("*******************************************");
+   ui_print("          Kernel Installation Done         ");
+   ui_print("*******************************************");
+   EOF
+
+           # 创建update-binary
+           cat > kernel_zip/META-INF/com/google/android/update-binary << 'EOF'
+   #!/sbin/sh
+   OUTFD=$1
+   ZIPFILE=$2
+   export OUTFD
+   export ZIPFILE
+
+   ui_print() { echo "$1"; }
+
+   ui_print "Running Magisk update-binary..."
+   # 这里是简化版本，实际使用Magisk的update-binary
+   EOF
+
+           # 复制编译好的内核
+           cp out/arch/arm64/boot/Image.gz-dtb kernel_zip/ 2>/dev/null || echo "No Image.gz-dtb found"
+           cp out/arch/arm64/boot/Image kernel_zip/ 2>/dev/null || echo "No Image found"
+
+           # 创建ZIP
+           cd kernel_zip
+           zip -r ../CustomKernel.zip .
+           cd ..
+
+       - name: Upload kernel artifacts
+         uses: actions/upload-artifact@v3
+         with:
+           name: kernel-artifacts
+           path: |
+             out/arch/arm64/boot/Image*
+             CustomKernel.zip
