@@ -142,7 +142,7 @@
            cat << 'EOF' > kernel_zip/META-INF/com/google/android/update-binary
    #!/sbin/sh
    # Generic kernel flash script for Magisk
-   OUTFD=$1
+   OUTFD=$2
    ZIPFILE=$2
 
    ui_print() { echo "$1"; }
