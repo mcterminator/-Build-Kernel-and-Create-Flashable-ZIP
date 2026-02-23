@@ -1,4 +1,4 @@
-   name: Build Android Kernel
+ name: Build Android Kernel
 
    on:
      workflow_dispatch:
@@ -192,6 +192,193 @@
            echo "ui_print(\"*******************************************\");" >> kernel_zip/META-INF/com/google/android/updater-script
            echo "ui_print(\"      ${{ github.event.inputs.kernel_name }} Installation Complete        \");" >> kernel_zip/META-INF/com/google/android/updater-script
            echo "ui_print(\"*******************************************\");" >> kernel_zip/META-INF/com/google/android/updater-script
+
+           # Copy kernel image to ZIP
+           cp "$IMAGE_FILE" kernel_zip/
+
+           # Make update-binary executable
+           chmod +x kernel_zip/META-INF/com/google/android/update-binary
+
+           # Create ZIP file
+           cd kernel_zip
+           zip -r "../${{ github.event.inputs.kernel_name }}-$(date +%Y%m%d).zip" .
+
+       - name: Upload kernel artifacts
+         uses: actions/upload-artifact@v3
+         with:
+           name: ${{ github.event.inputs.kernel_name }}
+           path: |
+             ${{ env.KERNEL_DIR }}/${{ github.event.inputs.kernel_name }}-*.zip
+             ${{ env.KERNEL_DIR }}/out/arch/arm64/boot/Image*
+
+       - name: Show build summary
+         run: |
+           echo "Build completed for ${{ github.event.inputs.kernel_name }}"
+           echo "Repository: ${{ github.event.inputs.kernel_repo }}"
+           echo "Branch: ${{ github.event.inputs.kernel_branch }}"
+           echo "Defconfig: ${{ github.event.inputs.device_defconfig }}"
+           echo "Compiler: ${{ github.event.inputs.compiler_type }}"
+
+✦ 这次我使用了echo命令来逐行创建脚本文件，避免了YAML解析器在处理here document时可能遇到的特殊字符解析问题。这样应该可以解决语法错误问题。
+
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+    > 这回事第145行的echo '' >> kernel_zip/META-INF/com/google/android/update-binary有问题
+
+✦ 我理解了问题所在，这与多行文本和YAML的解析方式有关。让我们简化整个工作流程文件，创建一个最基本的版本：
+
+   1. 在你的GitHub仓库中创建文件 .github/workflows/build-kernel.yml：
+
+   name: Build Android Kernel
+
+   on:
+     workflow_dispatch:
+       inputs:
+         kernel_repo:
+           description: 'Kernel source repository URL'
+           required: true
+           default: 'https://github.com/user/kernel_repo'
+         kernel_branch:
+           description: 'Kernel branch to build'
+           required: true
+           default: 'main'
+         device_defconfig:
+           description: 'Device defconfig (e.g., vendor_device_defconfig)'
+           required: true
+           default: 'defconfig'
+         compiler_type:
+           description: 'Compiler type (gcc/clang)'
+           required: true
+           default: 'gcc'
+         kernel_name:
+           description: 'Name for the kernel (used in output)'
+           required: true
+           default: 'custom-kernel'
+
+   jobs:
+     build:
+       runs-on: ubuntu-latest
+
+       steps:
+       - name: Checkout this repository
+         uses: actions/checkout@v3
+
+       - name: Setup build environment
+         run: |
+           sudo apt update
+           sudo apt install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev lib32readline-dev lib32z1-dev libelf-dev liblz4-tool libncurses5-devlibsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev python2 python3 openjdk-8-jdk wget
+
+       - name: Clone kernel source
+         run: |
+           git clone --depth=1 --single-branch --branch ${{ github.event.inputs.kernel_branch }} ${{ github.event.inputs.kernel_repo }} kernel_src
+           cd kernel_src
+           echo "KERNEL_DIR=$(pwd)" >> $GITHUB_ENV
+
+       - name: Install Cross Compiler
+         run: |
+           cd ${{ env.KERNEL_DIR }}
+           # Create toolchain directory
+           mkdir -p toolchains
+           cd toolchains
+
+           if [ "${{ github.event.inputs.compiler_type }}" = "gcc" ]; then
+             # Download GCC toolchain
+             git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9
+             git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9
+
+             # Set environment variables
+             echo "CROSS_COMPILE=${{ env.KERNEL_DIR }}/toolchains/aarch64-linux-android-4.9/bin/aarch64-linux-android-" >> $GITHUB_ENV
+           else
+             # Download Clang
+             wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android13-release/clang-r450784h.tar.gz
+             tar -xzf clang-r450784h.tar.gz
+
+             # Download GCC toolchain for Clang as well
+             git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9
+             git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9
+
+             # Set environment variables
+             echo "CLANG_PREBUILT_BIN=${{ env.KERNEL_DIR }}/toolchains/clang-r450784h/bin" >> $GITHUB_ENV
+             echo "CROSS_COMPILE=${{ env.KERNEL_DIR }}/toolchains/aarch64-linux-android-4.9/bin/aarch64-linux-android-" >> $GITHUB_ENV
+           fi
+
+       - name: Setup environment variables
+         run: |
+           echo "ARCH=arm64" >> $GITHUB_ENV
+           echo "SUBARCH=arm64" >> $GITHUB_ENV
+
+       - name: Create output directory
+         run: |
+           mkdir -p ${{ env.KERNEL_DIR }}/out
+
+       - name: Configure kernel with defconfig
+         run: |
+           cd ${{ env.KERNEL_DIR }}
+           make O=out ${{ github.event.inputs.device_defconfig }}
+
+       - name: Verify configuration
+         run: |
+           cd ${{ env.KERNEL_DIR }}
+           ls -la out/.config
+
+       - name: Build kernel
+         run: |
+           cd ${{ env.KERNEL_DIR }}
+           if [ "${{ github.event.inputs.compiler_type }}" = "gcc" ]; then
+             make -j$(nproc) O=out ARCH=arm64 CROSS_COMPILE=${{ env.CROSS_COMPILE }}
+           else
+             make -j$(nproc) O=out ARCH=arm64 CROSS_COMPILE=${{ env.CROSS_COMPILE }} CLANG_TRIPLE=aarch64-linux-gnu- CC=${{ env.CLANG_PREBUILT_BIN }}/clang
+           fi
+
+       - name: Check build results
+         run: |
+           cd ${{ env.KERNEL_DIR }}
+           ls -la out/arch/arm64/boot/
+
+           # List available kernel images
+           find out/arch/arm64/boot/ -name "Image*" -exec ls -la {} \;
+
+       - name: Create flashable ZIP
+         run: |
+           cd ${{ env.KERNEL_DIR }}
+
+           # Find kernel image file
+           IMAGE_FILE=""
+           for f in out/arch/arm64/boot/Image.gz-dtb out/arch/arm64/boot/Image-dtb out/arch/arm64/boot/Image.gz out/arch/arm64/boot/Image; do
+             if [ -f "$f" ]; then
+               IMAGE_FILE="$f"
+               break
+             fi
+           done
+
+           if [ -z "$IMAGE_FILE" ]; then
+             echo "No kernel image found!"
+             exit 1
+           fi
+
+           echo "Using kernel image: $IMAGE_FILE"
+
+           # Create temporary directory for ZIP
+           mkdir -p kernel_zip/META-INF/com/google/android
+
+           # Create a simple update-binary file
+           echo '#!/sbin/sh' > kernel_zip/META-INF/com/google/android/update-binary
+           echo 'echo "Flashing custom kernel..."' >> kernel_zip/META-INF/com/google/android/update-binary
+           echo 'OUTFD=$1' >> kernel_zip/META-INF/com/google/android/update-binary
+           echo 'ZIPFILE=$2' >> kernel_zip/META-INF/com/google/android/update-binary
+           echo 'ui_print() { echo "$1"; }' >> kernel_zip/META-INF/com/google/android/update-binary
+           echo 'ui_print "Installing custom kernel..." ' >> kernel_zip/META-INF/com/google/android/update-binary
+
+           # Create simple updater-script
+           echo '#MAGISK' > kernel_zip/META-INF/com/google/android/updater-script
+           echo 'apiLevel=20' >> kernel_zip/META-INF/com/google/android/updater-script
+           echo "ui_print(\"Installing ${{ github.event.inputs.kernel_name }}\");" >> kernel_zip/META-INF/com/google/android/updater-script
+           echo 'package_extract_file "'${IMAGE_FILE##*/}'", "/tmp/'${IMAGE_FILE##*/}'";' >> kernel_zip/META-INF/com/google/android/updater-script
+           echo 'set_metadata("/tmp/'${IMAGE_FILE##*/}'", "uid", 0, "gid", 0, "mode", 0644);' >> kernel_zip/META-INF/com/google/android/updater-script
+           echo 'cat /tmp/'${IMAGE_FILE##*/}' > /dev/block/bootdevice/by-name/boot;' >> kernel_zip/META-INF/com/google/android/updater-script
+           echo 'ui_print("Kernel installation complete");' >> kernel_zip/META-INF/com/google/android/updater-script
 
            # Copy kernel image to ZIP
            cp "$IMAGE_FILE" kernel_zip/
