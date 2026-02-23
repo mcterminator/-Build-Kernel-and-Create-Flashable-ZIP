@@ -45,41 +45,39 @@
            echo "KERNEL_DIR=$(pwd)" >> $GITHUB_ENV
 
        - name: Install GCC Cross Compiler
-         if: ${{ github.event.inputs.compiler_type == 'gcc' }}
          run: |
-           cd ${{ env.KERNEL_DIR }}
-           # Create toolchain directory
-           mkdir -p toolchains
-           cd toolchains
+           if [ "${{ github.event.inputs.compiler_type }}" = "gcc" ]; then
+             cd ${{ env.KERNEL_DIR }}
+             # Create toolchain directory
+             mkdir -p toolchains
+             cd toolchains
 
-           # Download GCC toolchain
-           git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9
-           git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9
+             # Download GCC toolchain
+             git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9
+             git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9
 
-           # Set environment variables
-           echo "CROSS_COMPILE=${{ env.KERNEL_DIR }}/toolchains/aarch64-linux-android-4.9/bin/aarch64-linux-android-" >> $GITHUB_ENV
-           echo "CROSS_COMPILE_ARM=${{ env.KERNEL_DIR }}/toolchains/arm-linux-androideabi-4.9/bin/arm-linux-androideabi-" >> $GITHUB_ENV
+             # Set environment variables
+             echo "CROSS_COMPILE=${{ env.KERNEL_DIR }}/toolchains/aarch64-linux-android-4.9/bin/aarch64-linux-android-" >> $GITHUB_ENV
+             echo "CROSS_COMPILE_ARM=${{ env.KERNEL_DIR }}/toolchains/arm-linux-androideabi-4.9/bin/arm-linux-androideabi-" >> $GITHUB_ENV
+           else
+             cd ${{ env.KERNEL_DIR }}
+             # Create toolchain directory
+             mkdir -p toolchains
+             cd toolchains
 
-       - name: Install Clang
-         if: ${{ github.event.inputs.compiler_type == 'clang' }}
-         run: |
-           cd ${{ env.KERNEL_DIR }}
-           # Create toolchain directory
-           mkdir -p toolchains
-           cd toolchains
+             # Download Clang (example with a common version)
+             wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android13-release/clang-r450784h.tar.gz
+             tar -xzf clang-r450784h.tar.gz
 
-           # Download Clang (example with a common version)
-           wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android13-release/clang-r450784h.tar.gz
-           tar -xzf clang-r450784h.tar.gz
+             # Download GCC toolchain for Clang as well (for cross-compilation)
+             git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9
+             git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9
 
-           # Download GCC toolchain for Clang as well (for cross-compilation)
-           git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9
-           git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9
-
-           # Set environment variables
-           echo "CLANG_PREBUILT_BIN=${{ env.KERNEL_DIR }}/toolchains/clang-r450784h/bin" >> $GITHUB_ENV
-           echo "CROSS_COMPILE=${{ env.KERNEL_DIR }}/toolchains/aarch64-linux-android-4.9/bin/aarch64-linux-android-" >> $GITHUB_ENV
-           echo "CROSS_COMPILE_ARM=${{ env.KERNEL_DIR }}/toolchains/arm-linux-androideabi-4.9/bin/arm-linux-androideabi-" >> $GITHUB_ENV
+             # Set environment variables
+             echo "CLANG_PREBUILT_BIN=${{ env.KERNEL_DIR }}/toolchains/clang-r450784h/bin" >> $GITHUB_ENV
+             echo "CROSS_COMPILE=${{ env.KERNEL_DIR }}/toolchains/aarch64-linux-android-4.9/bin/aarch64-linux-android-" >> $GITHUB_ENV
+             echo "CROSS_COMPILE_ARM=${{ env.KERNEL_DIR }}/toolchains/arm-linux-androideabi-4.9/bin/arm-linux-androideabi-" >> $GITHUB_ENV
+           fi
 
        - name: Setup environment variables
          run: |
@@ -100,17 +98,14 @@
            cd ${{ env.KERNEL_DIR }}
            ls -la out/.config
 
-       - name: Build kernel (using GCC)
-         if: ${{ github.event.inputs.compiler_type == 'gcc' }}
+       - name: Build kernel
          run: |
            cd ${{ env.KERNEL_DIR }}
-           make -j$(nproc) O=out ARCH=arm64 CROSS_COMPILE=${{ env.CROSS_COMPILE }}
-
-       - name: Build kernel (using Clang)
-         if: ${{ github.event.inputs.compiler_type == 'clang' }}
-         run: |
-           cd ${{ env.KERNEL_DIR }}
-           make -j$(nproc) O=out ARCH=arm64 CROSS_COMPILE=${{ env.CROSS_COMPILE }} CLANG_TRIPLE=aarch64-linux-gnu- CC=${{ env.CLANG_PREBUILT_BIN }}/clang
+           if [ "${{ github.event.inputs.compiler_type }}" = "gcc" ]; then
+             make -j$(nproc) O=out ARCH=arm64 CROSS_COMPILE=${{ env.CROSS_COMPILE }}
+           else
+             make -j$(nproc) O=out ARCH=arm64 CROSS_COMPILE=${{ env.CROSS_COMPILE }} CLANG_TRIPLE=aarch64-linux-gnu- CC=${{ env.CLANG_PREBUILT_BIN }}/clang
+           fi
 
        - name: Check build results
          run: |
