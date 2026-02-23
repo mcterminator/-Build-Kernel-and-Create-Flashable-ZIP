@@ -1,4 +1,4 @@
- name: Build Android Kernel
+   name: Build Android Kernel
 
    on:
      workflow_dispatch:
