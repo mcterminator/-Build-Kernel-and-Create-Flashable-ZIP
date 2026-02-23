@@ -16,7 +16,7 @@
            required: true
            default: 'defconfig'
          compiler_type:
-           description: 'Compiler type (clang/gcc)'
+           description: 'Compiler type (gcc/clang)'
            required: true
            default: 'gcc'
          kernel_name:
@@ -71,6 +71,10 @@
            # Download Clang (example with a common version)
            wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android13-release/clang-r450784h.tar.gz
            tar -xzf clang-r450784h.tar.gz
+
+           # Download GCC toolchain for Clang as well (for cross-compilation)
+           git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9
+           git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9
 
            # Set environment variables
            echo "CLANG_PREBUILT_BIN=${{ env.KERNEL_DIR }}/toolchains/clang-r450784h/bin" >> $GITHUB_ENV
