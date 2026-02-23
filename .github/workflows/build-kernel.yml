@@ -26,7 +26,7 @@
 
    jobs:
      build:
-       runs-on: ubuntu-20.04  # 使用Ubuntu 20.04以确保兼容性
+       runs-on: ubuntu-latest  # 使用最新的Ubuntu版本，但安装兼容的包
 
        steps:
        - name: Checkout this repository
@@ -34,9 +34,11 @@
 
        - name: Setup build environment
          run: |
+           # 为Ubuntu 22.04+系统安装兼容的依赖包
            sudo dpkg --add-architecture i386
            sudo apt update
-           sudo apt install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses6-dev lib32readline-dev lib32z1-dev libelf-dev liblz4-tool libncurses5-devlibsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev python2 python3 openjdk-8-jdk wget
+           # 使用Ubuntu 22.04+可用的包名
+           sudo apt install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev lib32readline-dev lib32z1-dev libelf-dev liblz4-tool libncurses5-devlibsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev python2 python3 openjdk-8-jdk wget
 
        - name: Clone kernel source
          run: |
